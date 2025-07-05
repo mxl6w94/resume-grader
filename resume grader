@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<!-- The DOCTYPE declaration defines the document type to be HTML5. This is the very first thing in your HTML document. -->
+<html lang="en">
+<!-- The <html> element is the root element of an HTML page. The 'lang' attribute specifies the language of the document. -->
+
+<head>
+    <!-- The <head> element contains meta-information about the HTML document, such as its title, scripts, and stylesheets. -->
+    <meta charset="UTF-8">
+    <!-- The 'charset' attribute specifies the character encoding for the HTML document. UTF-8 is a universal character set that includes almost every character. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- The 'viewport' meta tag gives the browser instructions on how to control the page's dimensions and scaling. 'width=device-width' sets the width of the page to follow the screen-width of the device, and 'initial-scale=1.0' sets the initial zoom level when the page is first loaded by the browser. This is crucial for responsive design. -->
+    <title>AI Resume Ranker</title>
+    <!-- The <title> element specifies a title for the HTML document, which is shown in the browser's title bar or in the page's tab. -->
+
+    <!-- This script tag loads Tailwind CSS, a utility-first CSS framework that allows us to style the application directly in the HTML markup using classes. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- This script tag loads the PDF.js library, which is required to read and parse text from PDF files. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    
+    <!-- This script tag loads the Mammoth.js library, required to read and parse text from Word documents (.docx). -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+
+
+    <!-- This block configures Tailwind CSS with a custom font ('Inter') for a clean, modern look. -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    <!-- This link imports the 'Inter' font from Google Fonts. -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+
+    <!-- This block contains custom CSS styles for the application. -->
+    <style>
+        html { scroll-behavior: smooth; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #64748b; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+
+<body class="bg-slate-100 font-sans text-slate-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-slate-900">AI Resume Ranker</h1>
+            <p class="mt-2 text-lg text-slate-600">Objectively score and rank candidates with customizable, weighted criteria.</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <div class="lg:col-span-2 space-y-8">
+
+                <!-- Criteria Editor Section -->
+                <section id="criteria-section" class="bg-white p-6 rounded-xl shadow-md">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                        <h2 class="text-2xl font-bold">Scoring Criteria</h2>
+                        <div id="total-weight-display" class="font-semibold text-slate-600">Total Weight: 0%</div>
+                    </div>
+                    
+                    <div id="criteria-list" class="space-y-4 mb-4">
+                        <!-- Criteria list appears here -->
+                    </div>
+
+                    <!-- This form is now for both adding and editing criteria -->
+                    <div id="criterion-editor" class="bg-slate-50 p-4 rounded-lg">
+                         <h3 id="editor-title" class="text-xl font-semibold mb-3">Add New Criterion</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <input type="text" id="criteria-name" placeholder="Criterion Name" class="sm:col-span-2 w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500">
+                            <select id="criteria-type" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500">
+                                <option value="ai">AI-Powered</option>
+                                <option value="manual">Manual</option>
+                            </select>
+                            <input type="number" id="criteria-weight" placeholder="Weight (e.g., 25 for 25%)" min="0" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500">
+                            <div id="ai-prompt-container" class="sm:col-span-2">
+                                <textarea id="ai-prompt" placeholder="AI Assessment Prompt..." class="w-full p-2 border rounded-md h-24 focus:ring-2 focus:ring-indigo-500"></textarea>
+                            </div>
+                            <select id="scoring-method" class="sm:col-span-2 w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500">
+                                <option value="1-10">Score (1-10)</option>
+                                <option value="yes-no">Yes / No</option>
+                                <option value="years">Years of Experience (0-10+)</option>
+                            </select>
+                        </div>
+                        <div class="mt-4 flex space-x-2">
+                            <button id="save-criterion-btn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                                Add Criterion
+                            </button>
+                            <button id="cancel-edit-btn" class="w-full bg-slate-200 text-slate-800 font-bold py-2 px-4 rounded-md hover:bg-slate-300 hidden">
+                                Cancel Edit
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Resume Input Section -->
+                <section id="resume-section" class="bg-white p-6 rounded-xl shadow-md">
+                    <h2 class="text-2xl font-bold mb-4 border-b pb-2">Analyze a New Resume</h2>
+                    <div class="space-y-4">
+                        <input type="text" id="candidate-name" placeholder="Candidate's Name (Optional, AI will find it)" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500">
+                        
+                        <input type="file" id="resume-file-input" class="hidden" accept=".txt,.pdf,.doc,.docx">
+                        <label for="resume-file-input" class="w-full cursor-pointer bg-white border border-slate-300 text-slate-700 font-semibold py-2 px-4 rounded-md hover:bg-slate-50 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                            Select Resume File (.txt, .pdf, .docx)
+                        </label>
+                        <p class="text-sm text-slate-500 text-center">Selected file: <span id="file-name-display" class="font-semibold">None</span></p>
+
+                        <button id="analyze-btn" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">
+                            Analyze Candidate
+                        </button>
+                    </div>
+                    <div id="loading-indicator" class="mt-4 text-center hidden">
+                        <p class="text-lg text-slate-600 animate-pulse">Analyzing... please wait.</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right column: Candidate Rankings -->
+            <aside class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-2xl font-bold mb-4 border-b pb-2">Candidate Rankings</h2>
+                <div id="candidate-list" class="space-y-4">
+                     <p class="text-slate-500">No candidates analyzed yet.</p>
+                </div>
+            </aside>
+        </main>
+        
+        <footer class="text-center mt-8 py-4 border-t">
+            <p class="text-slate-500">Powered by Gemini and Firebase.</p>
+            <p class="text-sm text-slate-400">Your User ID: <span id="user-id-display">loading...</span></p>
+        </footer>
+    </div>
+
+    <!-- Modal for Manual Scoring and Review -->
+    <div id="review-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden p-4 z-50">
+        <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h3 id="review-modal-title" class="text-2xl font-bold mb-4">Review & Score Candidate</h3>
+            <div id="manual-scoring-section" class="space-y-4"></div>
+            <div class="flex justify-end space-x-4 mt-6">
+                <button id="cancel-review-btn" class="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-lg hover:bg-slate-300">Cancel</button>
+                <button id="save-candidate-btn" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Save Candidate</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for displaying errors or messages -->
+    <div id="message-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden p-4 z-50">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full">
+            <h3 id="modal-title" class="text-xl font-bold mb-4">Message</h3>
+            <p id="modal-message" class="text-slate-700 mb-6"></p>
+            <button id="modal-close-btn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-700">Close</button>
+        </div>
+    </div>
+
+    <!-- NEW: Modal for Viewing Full Resume Text -->
+    <div id="resume-view-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden p-4 z-50">
+        <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="resume-view-modal-title" class="text-2xl font-bold">Resume</h3>
+                <button id="resume-view-modal-close-btn" class="text-gray-500 hover:text-gray-700 text-3xl leading-none">&times;</button>
+            </div>
+            <div class="flex-grow overflow-y-auto bg-slate-100 p-4 rounded-md border">
+                <pre id="resume-view-modal-text" class="whitespace-pre-wrap font-sans text-sm"></pre>
+            </div>
+        </div>
+    </div>
+
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, addDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase Configuration ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // --- Global State ---
+        let userId = null;
+        let criteria = [];
+        let candidates = [];
+        let resumeTextContent = '';
+        let pendingCandidateData = {};
+        let editingCriterionId = null;
+
+        // --- DOM Element References ---
+        const criteriaListEl = document.getElementById('criteria-list');
+        const saveCriterionBtn = document.getElementById('save-criterion-btn');
+        const cancelEditBtn = document.getElementById('cancel-edit-btn');
+        const editorTitle = document.getElementById('editor-title');
+        const criteriaNameInput = document.getElementById('criteria-name');
+        const criteriaTypeSelect = document.getElementById('criteria-type');
+        const criteriaWeightInput = document.getElementById('criteria-weight');
+        const aiPromptContainer = document.getElementById('ai-prompt-container');
+        const aiPromptInput = document.getElementById('ai-prompt');
+        const scoringMethodSelect = document.getElementById('scoring-method');
+        const totalWeightDisplay = document.getElementById('total-weight-display');
+        const candidateListEl = document.getElementById('candidate-list');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const candidateNameInput = document.getElementById('candidate-name');
+        const resumeFileInput = document.getElementById('resume-file-input');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const messageModal = document.getElementById('message-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const reviewModal = document.getElementById('review-modal');
+        const reviewModalTitle = document.getElementById('review-modal-title');
+        const manualScoringSection = document.getElementById('manual-scoring-section');
+        const cancelReviewBtn = document.getElementById('cancel-review-btn');
+        const saveCandidateBtn = document.getElementById('save-candidate-btn');
+        // NEW: Resume view modal elements
+        const resumeViewModal = document.getElementById('resume-view-modal');
+        const resumeViewModalTitle = document.getElementById('resume-view-modal-title');
+        const resumeViewModalText = document.getElementById('resume-view-modal-text');
+        const resumeViewModalCloseBtn = document.getElementById('resume-view-modal-close-btn');
+
+        // --- Utility Functions ---
+        function showMessage(title, message) {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            messageModal.classList.remove('hidden');
+        }
+
+        // --- Authentication ---
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                userIdDisplay.textContent = userId;
+                initCriteriaListener();
+                initCandidatesListener();
+            } else {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) { showMessage("Authentication Error", "Could not sign in."); }
+            }
+        });
+
+        // --- Firestore Listeners ---
+        function initCriteriaListener() {
+            if (!userId) return;
+            const criteriaCollectionPath = `artifacts/${appId}/users/${userId}/criteria`;
+            onSnapshot(collection(db, criteriaCollectionPath), (snapshot) => {
+                criteria = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderCriteria();
+            }, (error) => console.error("Error listening to criteria:", error));
+        }
+
+        function initCandidatesListener() {
+            if (!userId) return;
+            const candidatesCollectionPath = `artifacts/${appId}/users/${userId}/candidates`;
+            onSnapshot(collection(db, candidatesCollectionPath), (snapshot) => {
+                candidates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                                    .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+                renderCandidates();
+            }, (error) => console.error("Error listening to candidates:", error));
+        }
+
+        // --- Rendering Functions ---
+        function renderCriteria() {
+            criteriaListEl.innerHTML = '';
+            let totalWeight = 0;
+            if (criteria.length === 0) {
+                criteriaListEl.innerHTML = '<p class="text-slate-500">No criteria added yet.</p>';
+            } else {
+                criteria.forEach(c => {
+                    totalWeight += Number(c.weight) || 0;
+                    const div = document.createElement('div');
+                    div.className = 'p-3 border rounded-lg bg-slate-50 flex justify-between items-center';
+                    div.innerHTML = `
+                        <div>
+                            <p class="font-bold">${c.name} <span class="text-xs font-normal text-white ${c.type === 'ai' ? 'bg-indigo-500' : 'bg-slate-500'} py-0.5 px-1.5 rounded-full">${c.type.toUpperCase()}</span></p>
+                            <p class="text-sm text-slate-600">Scoring: ${c.scoringMethod} | Weight: ${c.weight || 0}%</p>
+                        </div>
+                        <div>
+                            <button data-id="${c.id}" class="edit-criterion-btn text-blue-600 hover:text-blue-800 font-semibold py-1 px-2 rounded mr-2">Edit</button>
+                            <button data-id="${c.id}" class="delete-criterion-btn text-red-500 hover:text-red-700 font-bold py-1 px-2 rounded">&times;</button>
+                        </div>
+                    `;
+                    criteriaListEl.appendChild(div);
+                });
+            }
+            totalWeightDisplay.textContent = `Total Weight: ${totalWeight}%`;
+            totalWeightDisplay.classList.toggle('text-red-500', totalWeight !== 100);
+        }
+        
+        function renderCandidates() {
+            candidateListEl.innerHTML = '';
+            if (candidates.length === 0) {
+                candidateListEl.innerHTML = '<p class="text-slate-500">No candidates analyzed yet.</p>';
+                return;
+            }
+
+            candidates.forEach(candidate => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-50 border rounded-lg transition-shadow hover:shadow-md';
+                
+                let scoresHTML = '<ul class="text-xs space-y-1 mt-2 list-disc list-inside">';
+                if (candidate.scores) {
+                    for (const [key, value] of Object.entries(candidate.scores)) {
+                        scoresHTML += `<li><span class="font-medium">${key}:</span> ${value}</li>`;
+                    }
+                }
+                scoresHTML += '</ul>';
+
+                card.innerHTML = `
+                    <div class="p-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-bold text-lg text-slate-800">${candidate.name}</h3>
+                                <p class="text-indigo-600 font-bold text-xl">${candidate.totalScore.toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <button data-id="${candidate.id}" class="details-btn text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-1 px-3 rounded-full mr-2">Details</button>
+                                <button data-id="${candidate.id}" class="delete-candidate-btn text-red-500 hover:text-red-700 font-bold">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="details-panel bg-white p-4 border-t hidden">
+                        <h4 class="font-semibold mb-2">Score Breakdown:</h4>
+                        ${scoresHTML}
+                        ${candidate.summary ? `<div class="mt-3 pt-3 border-t"><p class="text-sm text-slate-700"><span class="font-semibold">AI Summary:</span> ${candidate.summary}</p></div>` : ''}
+                        ${candidate.resumeText ? `
+                            <div class="mt-3 pt-3 border-t">
+                                 <button data-id="${candidate.id}" class="view-resume-btn w-full text-center bg-blue-100 text-blue-700 font-semibold py-2 px-3 rounded-lg hover:bg-blue-200">View Full Resume Text</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+                candidateListEl.appendChild(card);
+            });
+        }
+
+        function renderReviewModal(candidateName, aiScores, manualCriteria) {
+            reviewModalTitle.textContent = `Review & Score: ${candidateName}`;
+            manualScoringSection.innerHTML = '';
+
+            let contentHTML = '<div class="space-y-4">';
+
+            if (Object.keys(aiScores).length > 0) {
+                contentHTML += '<h4 class="font-semibold text-lg text-slate-700 border-b pb-2">AI Generated Scores</h4>';
+                contentHTML += '<ul class="space-y-2 p-3 bg-indigo-50 rounded-lg">';
+                for (const [name, score] of Object.entries(aiScores)) {
+                    contentHTML += `<li class="flex justify-between items-center"><span class="font-medium">${name}</span> <span class="text-indigo-600 font-bold text-lg">${score}</span></li>`;
+                }
+                contentHTML += '</ul>';
+            }
+
+            if (manualCriteria.length > 0) {
+                contentHTML += '<h4 class="font-semibold text-lg text-slate-700 border-b pb-2 mt-4">Manual Scores</h4>';
+                contentHTML += '<div class="space-y-3">';
+                manualCriteria.forEach(c => {
+                    contentHTML += `<div><label class="block font-medium mb-1" for="manual-score-${c.id}">${c.name} (${c.scoringMethod})</label>`;
+                    if (c.scoringMethod === 'yes-no') {
+                        contentHTML += `<select id="manual-score-${c.id}" data-criterion-name="${c.name}" class="manual-score-input w-full p-2 border rounded-md"><option value="No">No</option><option value="Yes">Yes</option></select>`;
+                    } else {
+                        contentHTML += `<input type="number" id="manual-score-${c.id}" data-criterion-name="${c.name}" class="manual-score-input w-full p-2 border rounded-md" placeholder="Enter score...">`;
+                    }
+                    contentHTML += '</div>';
+                });
+                contentHTML += '</div>';
+            }
+            contentHTML += '</div>';
+            manualScoringSection.innerHTML = contentHTML;
+            reviewModal.classList.remove('hidden');
+        }
+
+        // --- Event Handlers ---
+        function resetCriterionEditor() {
+            editingCriterionId = null;
+            editorTitle.textContent = 'Add New Criterion';
+            saveCriterionBtn.textContent = 'Add Criterion';
+            cancelEditBtn.classList.add('hidden');
+            criteriaNameInput.value = '';
+            criteriaTypeSelect.value = 'ai';
+            criteriaWeightInput.value = '';
+            aiPromptInput.value = '';
+            scoringMethodSelect.value = '1-10';
+            aiPromptContainer.style.display = 'block';
+        }
+
+        async function handleSaveCriterion() {
+            if (!userId) return showMessage("Error", "You must be signed in.");
+            
+            const name = criteriaNameInput.value.trim();
+            const type = criteriaTypeSelect.value;
+            const weight = criteriaWeightInput.value.trim();
+            const prompt = aiPromptInput.value.trim();
+            const scoringMethod = scoringMethodSelect.value;
+
+            if (!name || !weight) return showMessage("Input Required", "Criterion Name and Weight are required.");
+            if (type === 'ai' && !prompt) return showMessage("Input Required", "AI prompt is required.");
+            
+            const criterionData = { name, type, weight: Number(weight), scoringMethod, prompt: type === 'ai' ? prompt : null };
+
+            try {
+                const criteriaCollectionPath = `artifacts/${appId}/users/${userId}/criteria`;
+                if (editingCriterionId) {
+                    await updateDoc(doc(db, criteriaCollectionPath, editingCriterionId), criterionData);
+                } else {
+                    await addDoc(collection(db, criteriaCollectionPath), criterionData);
+                }
+                resetCriterionEditor();
+            } catch (error) { showMessage("Database Error", "Failed to save the criterion."); }
+        }
+
+        function handleEditCriterion(id) {
+            const criterion = criteria.find(c => c.id === id);
+            if (!criterion) return;
+
+            editingCriterionId = id;
+            editorTitle.textContent = 'Edit Criterion';
+            saveCriterionBtn.textContent = 'Update Criterion';
+            cancelEditBtn.classList.remove('hidden');
+
+            criteriaNameInput.value = criterion.name;
+            criteriaTypeSelect.value = criterion.type;
+            criteriaWeightInput.value = criterion.weight;
+            scoringMethodSelect.value = criterion.scoringMethod;
+            aiPromptInput.value = criterion.prompt || '';
+            aiPromptContainer.style.display = criterion.type === 'ai' ? 'block' : 'none';
+        }
+        
+        async function handleAnalyze() {
+            if (!userId) return showMessage("Error", "You must be signed in.");
+            
+            if (!resumeTextContent) {
+                return showMessage("Input Required", "Please select a resume file. The file may be empty or could not be read.");
+            }
+            if (criteria.length === 0) return showMessage("Input Required", "Please add at least one scoring criterion.");
+            
+            const manualCandidateName = candidateNameInput.value.trim();
+            const aiCriteria = criteria.filter(c => c.type === 'ai');
+
+            loadingIndicator.classList.remove('hidden');
+            analyzeBtn.disabled = true;
+
+            try {
+                let aiScores = {};
+                let summary = '';
+                let extractedName = '';
+
+                if (aiCriteria.length > 0 || !manualCandidateName) {
+                    const prompt = `Analyze the following resume text and provide a JSON object with three keys: "name", "scores", and "summary".
+                    Resume Text:
+                    ---
+                    ${resumeTextContent}
+                    ---
+                    Instructions:
+                    1. For the "name" key, extract the candidate's full name from the resume text.
+                    2. For the "scores" key, provide a score for each of these criteria based on the resume text:\n${aiCriteria.map(c => `- "${c.name}": ${c.prompt} (Scoring: ${c.scoringMethod})`).join('\n')}
+                    3. For the "summary" key, give a one-paragraph summary of the candidate's qualifications.`;
+                    
+                    const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } };
+                    const apiKey = "";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+
+                    if (!response.ok) throw new Error(`API call failed: ${response.statusText}`);
+                    
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]) {
+                        const jsonResponse = JSON.parse(result.candidates[0].content.parts[0].text);
+                        aiScores = jsonResponse.scores || {};
+                        summary = jsonResponse.summary || 'No summary generated.';
+                        extractedName = jsonResponse.name || '';
+                    } else {
+                        throw new Error("Invalid response structure from API.");
+                    }
+                }
+                
+                const finalCandidateName = extractedName || manualCandidateName || "Unknown Candidate";
+
+                pendingCandidateData = { name: finalCandidateName, aiScores, summary };
+                const manualCriteria = criteria.filter(c => c.type === 'manual');
+                renderReviewModal(finalCandidateName, aiScores, manualCriteria);
+
+            } catch (error) {
+                console.error("Error during analysis:", error);
+                showMessage("Analysis Error", `An error occurred: ${error.message}.`);
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                analyzeBtn.disabled = false;
+            }
+        }
+
+        async function handleSaveCandidate() {
+            const manualScoreInputs = document.querySelectorAll('.manual-score-input');
+            let manualScores = {};
+            manualScoreInputs.forEach(input => {
+                const criterionName = input.getAttribute('data-criterion-name');
+                manualScores[criterionName] = input.value;
+            });
+
+            const allScores = { ...pendingCandidateData.aiScores, ...manualScores };
+            let totalScore = 0;
+            let totalWeight = 0;
+
+            criteria.forEach(c => {
+                const scoreValue = allScores[c.name];
+                if (scoreValue !== undefined) {
+                    let numericScore = 0;
+                    if (c.scoringMethod === 'yes-no') {
+                        numericScore = String(scoreValue).toLowerCase() === 'yes' ? 10 : 0;
+                    } else {
+                        numericScore = parseFloat(scoreValue) || 0;
+                    }
+                    totalScore += (numericScore / 10) * (c.weight || 0);
+                    totalWeight += (c.weight || 0);
+                }
+            });
+            
+            const finalScore = totalWeight > 0 ? (totalScore / totalWeight) * 100 : 0;
+
+            const newCandidate = {
+                name: pendingCandidateData.name,
+                scores: allScores,
+                summary: pendingCandidateData.summary,
+                totalScore: finalScore,
+                analyzedAt: new Date(),
+                resumeText: resumeTextContent, // Save the resume text
+            };
+
+            try {
+                const candidatesCollectionPath = `artifacts/${appId}/users/${userId}/candidates`;
+                await addDoc(collection(db, candidatesCollectionPath), newCandidate);
+                
+                reviewModal.classList.add('hidden');
+                candidateNameInput.value = '';
+                resumeFileInput.value = '';
+                fileNameDisplay.textContent = 'None';
+                resumeTextContent = '';
+                pendingCandidateData = {};
+                showMessage("Success", `${newCandidate.name} has been saved and ranked.`);
+            } catch (error) { showMessage("Database Error", "Failed to save the candidate."); }
+        }
+
+        // --- Event Listeners ---
+        criteriaTypeSelect.addEventListener('change', (e) => {
+            aiPromptContainer.style.display = e.target.value === 'ai' ? 'block' : 'none';
+        });
+        
+        saveCriterionBtn.addEventListener('click', handleSaveCriterion);
+        cancelEditBtn.addEventListener('click', resetCriterionEditor);
+        analyzeBtn.addEventListener('click', handleAnalyze);
+        
+        resumeFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            fileNameDisplay.textContent = file.name;
+            resumeTextContent = '';
+            
+            analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = `
+                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Processing File...
+            `;
+
+            const reEnableButton = () => {
+                analyzeBtn.disabled = false;
+                analyzeBtn.innerHTML = 'Analyze Candidate';
+            };
+            
+            const handleFileError = (fileType) => {
+                showMessage("File Error", `Could not read the ${fileType} file. It may be corrupted, password-protected, or an unsupported format.`);
+                resumeFileInput.value = '';
+                fileNameDisplay.textContent = 'None';
+                resumeTextContent = '';
+                reEnableButton();
+            };
+
+            const wordMimeTypes = [ "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ];
+
+            try {
+                if (file.type === "text/plain") {
+                    const reader = new FileReader();
+                    reader.onload = (event) => { resumeTextContent = event.target.result; reEnableButton(); };
+                    reader.onerror = () => handleFileError('.txt');
+                    reader.readAsText(file);
+                } else if (file.type === "application/pdf") {
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        try {
+                            const pdfData = new Uint8Array(event.target.result);
+                            pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
+                            const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+                            let fullText = '';
+                            for (let i = 1; i <= pdf.numPages; i++) {
+                                const page = await pdf.getPage(i);
+                                const textContent = await page.getTextContent();
+                                fullText += textContent.items.map(item => item.str).join(' ') + '\n';
+                            }
+                            resumeTextContent = fullText;
+                            reEnableButton();
+                        } catch (error) { handleFileError('PDF'); }
+                    };
+                    reader.onerror = () => handleFileError('PDF');
+                    reader.readAsArrayBuffer(file);
+                } else if (wordMimeTypes.includes(file.type) || file.name.endsWith('.docx')) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        mammoth.extractRawText({ arrayBuffer: event.target.result })
+                            .then(result => { 
+                                resumeTextContent = result.value;
+                                reEnableButton();
+                            })
+                            .catch(error => handleFileError('Word'));
+                    };
+                    reader.onerror = () => handleFileError('Word');
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    showMessage("Invalid File Type", "Please select a .txt, .pdf, or .docx file.");
+                    fileNameDisplay.textContent = 'None';
+                    resumeFileInput.value = '';
+                    reEnableButton();
+                }
+            } catch (e) {
+                handleFileError('unknown');
+            }
+        });
+
+        document.body.addEventListener('click', async (e) => {
+            const editBtn = e.target.closest('.edit-criterion-btn');
+            if (editBtn) { handleEditCriterion(editBtn.getAttribute('data-id')); }
+
+            const deleteCriterionBtn = e.target.closest('.delete-criterion-btn');
+            if (deleteCriterionBtn) {
+                const id = deleteCriterionBtn.getAttribute('data-id');
+                if (confirm('Delete this criterion?')) {
+                    try {
+                        await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/criteria/${id}`));
+                        resetCriterionEditor();
+                    } catch (error) { showMessage("Database Error", "Failed to delete criterion."); }
+                }
+            }
+            
+            const deleteCandidateBtn = e.target.closest('.delete-candidate-btn');
+            if (deleteCandidateBtn) {
+                const id = deleteCandidateBtn.getAttribute('data-id');
+                if (confirm('Delete this candidate?')) {
+                    try {
+                        await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/candidates/${id}`));
+                    } catch (error) { showMessage("Database Error", "Failed to delete candidate."); }
+                }
+            }
+
+            const detailsBtn = e.target.closest('.details-btn');
+            if (detailsBtn) {
+                const card = detailsBtn.closest('.bg-slate-50');
+                card.querySelector('.details-panel').classList.toggle('hidden');
+            }
+            
+            // NEW: Event listener for the view resume button
+            const viewResumeBtn = e.target.closest('.view-resume-btn');
+            if (viewResumeBtn) {
+                const candidateId = viewResumeBtn.getAttribute('data-id');
+                const candidate = candidates.find(c => c.id === candidateId);
+                if (candidate && candidate.resumeText) {
+                    resumeViewModalTitle.textContent = `Resume: ${candidate.name}`;
+                    resumeViewModalText.textContent = candidate.resumeText;
+                    resumeViewModal.classList.remove('hidden');
+                }
+            }
+        });
+
+        document.getElementById('modal-close-btn').addEventListener('click', () => messageModal.classList.add('hidden'));
+        cancelReviewBtn.addEventListener('click', () => reviewModal.classList.add('hidden'));
+        saveCandidateBtn.addEventListener('click', handleSaveCandidate);
+        resumeViewModalCloseBtn.addEventListener('click', () => resumeViewModal.classList.add('hidden'));
+
+    </script>
+</body>
+
+</html>
